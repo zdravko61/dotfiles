@@ -40,24 +40,58 @@ prompt_command() {
   local scm=
 
   # avoid tree scans on home directory & add an option to disable them (mainly for slow disks &| large repos)
-  if [[ -z ${BASHRC_DISABLE_SCM} && "${dir}" != "${HOME}" ]]; then
-    # search for first .git in the tree
-    local dir="${PWD}" git_dir=
-    while [[ "${dir}" != '/' && -n "${dir}" ]]; do
-      [[ -z ${BASHRC_DISABLE_SCM_GIT} && -z ${git_dir} && -e "${dir}/.git" ]] && git_dir="${dir}/.git" && break
-      dir="${dir%/*}"
-    done
+    if [[ -z ${BASHRC_DISABLE_SCM} && "${dir}" != "${HOME}" ]]; then
+      # search for first .git/.svn/.hg in the tree
+      local dir="${PWD}" git_dir= svn_dir= hg_dir=
+      while [[ "${dir}" != '/' && -n "${dir}" ]]; do
+        [[ -z ${BASHRC_DISABLE_SCM_GIT} && -z ${git_dir} && -e "${dir}/.git" ]] && git_dir="${dir}/.git" && break
+        [[ -z ${BASHRC_DISABLE_SCM_SVN} && -z ${svn_dir} && -e "${dir}/.svn" ]] && svn_dir="${dir}/.svn" && break
+        [[ -z ${BASHRC_DISABLE_SCM_HG}  && -z ${hg_dir}  && -e "${dir}/.hg"  ]] && hg_dir="${dir}/.hg"   && break
+        dir="${dir%/*}"
+      done
 
-    # git
-    if [[ -n ${git_dir} ]]; then
-      local branch=`git --git-dir="${git_dir}" symbolic-ref HEAD 2>/dev/null`
-      branch="${branch#refs/heads/}"
-      if [[ -n ${branch} ]]; then
-        local status=`git status --porcelain 2>/dev/null | head -1`
-        if [[ -n ${status} ]]; then
-          scm="${scm}${reset}(${grey}git:${red}${branch}${reset})"
+      # git
+      if [[ -n ${git_dir} ]]; then
+        local branch= extra=
+
+        if [[ -d "${git_dir}/rebase-apply" ]]; then
+          if [[ -f "${git_dir}/rebase-apply/rebasing" ]]; then
+            extra="|${yellow}rebase${reset}"
+          elif [[ -f "${git_dir}/rebase-apply/applying" ]]; then
+            extra="|${yellow}am${reset}"
+          else
+            extra="|${yellow}am/rebase${reset}"
+          fi
+          branch="$(< "${git_dir}/rebase-apply/head-name")"
+        elif [[ -f "${git_dir}/rebase-merge/interactive" ]]; then
+          extra="|${yellow}rebase-i${reset}"
+          branch="$(< "${git_dir}/rebase-merge/head-name")"
+        elif [[ -d "${git_dir}/rebase-merge" ]]; then
+          extra="|${yellow}rebase-m${reset}"
+          branch="$(< "${git_dir}/rebase-merge/head-name")"
+        elif [[ -f "${git_dir}/MERGE_HEAD" ]]; then
+          extra="|${yellow}merge${reset}"
+          branch=`git --git-dir="${git_dir}" symbolic-ref HEAD 2>/dev/null`
         else
-          scm="${scm}${reset}(${grey}git:${green}${branch}${reset})"
+          if ! branch=`git --git-dir="${git_dir}" symbolic-ref HEAD 2>/dev/null`; then
+            if branch=`git --git-dir="${git_dir}" describe --exact-match HEAD 2>/dev/null`; then
+              branch="${blue}${branch}"
+            elif branch=`git --git-dir="${git_dir}" describe --tags HEAD 2>/dev/null`; then
+              branch="${blue}${branch}"
+            else
+              branch="${blue}`cut -c1-8 "${git_dir}/HEAD"`"
+            fi
+          fi
+        fi
+
+        branch="${branch#refs/heads/}"
+        if [[ -n ${branch} ]]; then
+          local status=`git status --porcelain 2>/dev/null | head -1`
+          if [[ -n ${status} ]]; then
+            scm="${scm}${reset}(${grey}git:${red}${branch}${reset}${extra})"
+          else
+            scm="${scm}${reset}(${grey}git:${green}${branch}${reset}${extra})"
+          fi
         fi
       fi
     fi
@@ -72,6 +106,7 @@ PROMPT_COMMAND=prompt_command
 
 # git prompt string
 GIT_PS1_SHOWDIRTYSTATE=true
+
 export PS1='[\u@mbp \w$(__git_ps1)]\$ '
 
 # .bashrc.aliases
