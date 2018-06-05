@@ -95,7 +95,7 @@ prompt_command() {
         fi
       fi
     fi
-  fi
+  
 
   # finally, set the variable
   PS1="${reset}[${user}@${host}(${pwd}${scm})]${exc} "
